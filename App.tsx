@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
 import { 
   ProjectTask, 
@@ -14,6 +13,8 @@ import {
   SlideDeck
 } from './types';
 import { generateProjectPlan, initializeGemini } from './services/geminiService';
+import { ProjectService, ProjectData } from './services/projectService';
+import { supabase } from './lib/supabase';
 import ProjectInputForm from './components/ProjectInputForm';
 import ProjectFlowDisplay from './components/ProjectFlowDisplay';
 import TaskDetailModal from './components/TaskDetailModal';
@@ -22,7 +23,8 @@ import AddTaskModal from './components/AddTaskModal';
 import ConfirmNewProjectModal from './components/ConfirmNewProjectModal';
 import SlideEditorView from './components/SlideEditorView';
 import ApiKeyModal from './components/ApiKeyModal';
-
+import AuthModal from './components/AuthModal';
+import ProjectListModal from './components/ProjectListModal';
 
 const defaultExtendedDetails: ExtendedTaskDetails = {
   subSteps: [],
@@ -100,25 +102,51 @@ const getEquipmentModificationTemplateTasks = (): ProjectTask[] => {
 };
 // --- End Template Task Generators ---
 
-
 const App: React.FC = () => {
+  const [user, setUser] = useState<any>(null);
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [projectGoal, setProjectGoal] = useState<string>('');
   const [targetDate, setTargetDate] = useState<string>('');
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<ProjectTask | null>(null);
   const [ganttData, setGanttData] = useState<GanttItem[] | null>(null);
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   
   const [isLoadingPlan, setIsLoadingPlan] = useState<boolean>(false);
   const [appError, setAppError] = useState<string | null>(null);
 
   const [currentView, setCurrentView] = useState<ViewState>(ViewState.INPUT_FORM);
   const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState<boolean>(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [isProjectListOpen, setIsProjectListOpen] = useState<boolean>(false);
 
   const [history, setHistory] = useState<ProjectTask[][]>([]);
   const [redoHistory, setRedoHistory] = useState<ProjectTask[][]>([]);
   
   const [customReportDeck, setCustomReportDeck] = useState<SlideDeck | null>(null);
+
+  // 認証状態の監視
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user ?? null);
+      if (!session?.user) {
+        // ログアウト時の処理
+        setCurrentProjectId(null);
+        setTasks([]);
+        setProjectGoal('');
+        setTargetDate('');
+        setGanttData(null);
+        setCurrentView(ViewState.INPUT_FORM);
+      }
+    });
+
+    // 初期認証状態の確認
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     const storedKey = sessionStorage.getItem('gemini-api-key');
@@ -126,7 +154,6 @@ const App: React.FC = () => {
       handleSetApiKey(storedKey);
     }
   }, []);
-
 
   const recordHistory = (currentTasks: ProjectTask[]) => {
     setHistory(prev => [...prev.slice(-10), currentTasks]); // Limit history size
@@ -264,12 +291,38 @@ const App: React.FC = () => {
     initializeGemini(''); // De-initialize
   };
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  const saveCurrentProject = async () => {
+    if (!user || !currentProjectId) return;
+
+    try {
+      await ProjectService.updateProject(currentProjectId, {
+        tasks,
+        ganttData,
+      });
+    } catch (error) {
+      console.error('プロジェクトの自動保存に失敗しました:', error);
+    }
+  };
+
+  // タスクが変更されたときに自動保存
+  useEffect(() => {
+    if (currentProjectId && tasks.length > 0) {
+      const timeoutId = setTimeout(saveCurrentProject, 2000); // 2秒後に保存
+      return () => clearTimeout(timeoutId);
+    }
+  }, [tasks, ganttData, currentProjectId]);
+
   const handleStartNewProject = () => {
     setProjectGoal('');
     setTargetDate('');
     setTasks([]);
     setGanttData(null);
     setCustomReportDeck(null);
+    setCurrentProjectId(null);
     setCurrentView(ViewState.INPUT_FORM);
     setAppError(null);
     setHistory([]);
@@ -293,6 +346,7 @@ const App: React.FC = () => {
         })));
         setGanttData(content.ganttData || null);
         setCustomReportDeck(null);
+        setCurrentProjectId(null); // JSONインポートは新規プロジェクト扱い
         setCurrentView(ViewState.PROJECT_FLOW);
         setHistory([]);
         setRedoHistory([]);
@@ -304,6 +358,27 @@ const App: React.FC = () => {
             handleClearApiKey();
         }
     }
+  };
+
+  const handleSelectProject = (project: ProjectData) => {
+    setProjectGoal(project.goal);
+    setTargetDate(project.targetDate);
+    setTasks(project.tasks.map(t => ({
+      ...t,
+      extendedDetails: { ...defaultExtendedDetails, ...(t.extendedDetails || {}) }
+    })));
+    setGanttData(project.ganttData || null);
+    setCurrentProjectId(project.id);
+    setCustomReportDeck(null);
+    setCurrentView(ViewState.PROJECT_FLOW);
+    setHistory([]);
+    setRedoHistory([]);
+    setIsProjectListOpen(false);
+  };
+
+  const handleCreateNewProject = () => {
+    setIsProjectListOpen(false);
+    handleStartNewProject();
   };
   
   const handleAddTaskFromModal = ({ title, description }: { title: string; description: string }) => {
@@ -366,6 +441,7 @@ const App: React.FC = () => {
     setTasks(autoLayoutTasks(templateTasks));
     setGanttData(null);
     setCustomReportDeck(null);
+    setCurrentProjectId(null); // テンプレートは新規プロジェクト扱い
     setCurrentView(ViewState.PROJECT_FLOW);
     setHistory([]);
     setRedoHistory([]);
@@ -383,9 +459,25 @@ const App: React.FC = () => {
       setTasks(layoutedTasks);
       setGanttData(null);
       setCustomReportDeck(null);
+      setCurrentProjectId(null); // AI生成は新規プロジェクト扱い
       setCurrentView(ViewState.PROJECT_FLOW);
       setHistory([]);
       setRedoHistory([]);
+
+      // ユーザーがログインしている場合、自動的にプロジェクトを保存
+      if (user) {
+        try {
+          const project = await ProjectService.createProject(
+            `AI生成プロジェクト - ${new Date().toLocaleDateString('ja-JP')}`,
+            goal,
+            date,
+            layoutedTasks
+          );
+          setCurrentProjectId(project.id);
+        } catch (error) {
+          console.error('プロジェクトの自動保存に失敗しました:', error);
+        }
+      }
     } catch (e) {
       const errorMessage = (e as Error).message;
       if (errorMessage.toLowerCase().includes('api key')) {
@@ -411,8 +503,11 @@ const App: React.FC = () => {
     setCustomReportDeck(deck);
   };
 
-
   const renderContent = () => {
+    if (!user) {
+      return <AuthModal isOpen={true} onClose={() => {}} onSuccess={() => setIsAuthModalOpen(false)} />;
+    }
+
     if (!apiKey) {
       return <ApiKeyModal onSetApiKey={handleSetApiKey} error={appError} />;
     }
@@ -456,6 +551,10 @@ const App: React.FC = () => {
             setGanttData={setGanttData}
             onCustomReportGenerated={handleCustomReportGenerated}
             onClearApiKey={handleClearApiKey}
+            onOpenProjectList={() => setIsProjectListOpen(true)}
+            onLogout={handleLogout}
+            currentProjectId={currentProjectId}
+            onSaveProject={saveCurrentProject}
           />
         );
       case ViewState.TASK_DETAIL:
@@ -480,6 +579,9 @@ const App: React.FC = () => {
             onLoadTemplate={handleLoadTemplate}
             initialGoal={projectGoal}
             initialDate={targetDate}
+            onOpenProjectList={() => setIsProjectListOpen(true)}
+            onLogout={handleLogout}
+            user={user}
           />
         );
     }
@@ -492,6 +594,14 @@ const App: React.FC = () => {
         <AddTaskModal
           onClose={() => setIsAddTaskModalOpen(false)}
           onSubmit={handleAddTaskFromModal}
+        />
+      )}
+      {isProjectListOpen && (
+        <ProjectListModal
+          isOpen={isProjectListOpen}
+          onClose={() => setIsProjectListOpen(false)}
+          onSelectProject={handleSelectProject}
+          onCreateNew={handleCreateNewProject}
         />
       )}
       {customReportDeck && (

@@ -1,7 +1,6 @@
-
 import React, { useState, useRef } from 'react';
 import LoadingSpinner from './LoadingSpinner';
-import { TargetIcon, CalendarIcon, UploadIcon } from './icons';
+import { TargetIcon, CalendarIcon, UploadIcon, FolderIcon, KeyIcon } from './icons';
 
 interface ProjectInputFormProps {
   onSubmit: (goal: string, date: string) => void;
@@ -10,6 +9,9 @@ interface ProjectInputFormProps {
   onLoadTemplate: (templateName: 'process-design' | 'process-change' | 'new-product-eval' | 'improvement-project' | 'equipment-modification', goal: string, date: string) => void;
   initialGoal?: string;
   initialDate?: string;
+  onOpenProjectList: () => void;
+  onLogout: () => void;
+  user: any;
 }
 
 type TemplateName = 'process-design' | 'process-change' | 'new-product-eval' | 'improvement-project' | 'equipment-modification';
@@ -20,7 +22,10 @@ const ProjectInputForm: React.FC<ProjectInputFormProps> = ({
   onImportProject, 
   onLoadTemplate,
   initialGoal = '', 
-  initialDate = '' 
+  initialDate = '',
+  onOpenProjectList,
+  onLogout,
+  user
 }) => {
   const [goal, setGoal] = useState<string>(initialGoal);
   const [targetDate, setTargetDate] = useState<string>(initialDate);
@@ -79,6 +84,29 @@ const ProjectInputForm: React.FC<ProjectInputFormProps> = ({
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 to-slate-700 p-4">
+      {/* ユーザー情報とログアウト */}
+      <div className="w-full max-w-2xl mb-4 flex justify-between items-center">
+        <div className="text-white text-sm">
+          ログイン中: {user?.email}
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onOpenProjectList}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-600 text-white rounded-md hover:bg-slate-500"
+          >
+            <FolderIcon className="w-5 h-5" />
+            保存済みプロジェクト
+          </button>
+          <button
+            onClick={onLogout}
+            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+          >
+            <KeyIcon className="w-5 h-5" />
+            ログアウト
+          </button>
+        </div>
+      </div>
+
       <div className="w-full max-w-2xl bg-white shadow-2xl rounded-xl p-8 md:p-12">
         <div className="text-center mb-10">
           <h1 className="text-4xl font-bold text-slate-800 mb-3">AIプロジェクトプランナー</h1>
@@ -186,7 +214,7 @@ const ProjectInputForm: React.FC<ProjectInputFormProps> = ({
       </div>
        <footer className="mt-12 text-center">
         <p className="text-slate-400 text-sm">
-          Powered by Gemini API
+          Powered by Gemini API & Supabase
         </p>
       </footer>
     </div>

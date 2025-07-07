@@ -9,11 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^19.1.0",
     "@google/genai": "^1.7.0",
+    "@supabase/supabase-js": "^2.50.3",
+    "html-to-image": "^1.11.11",
+    "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "xlsx": "latest",
-    "html-to-image": "^1.11.11"
+    "xlsx": "latest"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
