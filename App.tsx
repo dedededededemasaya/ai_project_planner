@@ -413,7 +413,7 @@ const App: React.FC = () => {
   
   const handleUpdateTaskPosition = (taskId: string, position: { x: number; y: number }) => {
     setTasks(prevTasks =>
-      prevTasks.map(t => (t.id === taskId ? { ...t, position } : t)
+      prevTasks.map(t => (t.id === taskId ? { ...t, position } : t))
     );
   };
 
@@ -538,11 +538,7 @@ const App: React.FC = () => {
             onExportProject={handleExportProject}
             onAddTask={() => setIsAddTaskModalOpen(true)}
             onRemoveTask={handleRemoveTask}
-
-        )
-    }
-  }
-}            onUpdateTaskStatus={handleUpdateTaskStatus}
+            onUpdateTaskStatus={handleUpdateTaskStatus}
             onImportSingleTask={() => {}} // Placeholder for now
             onAutoLayout={() => setTasksWithHistory(prev => autoLayoutTasks([...prev]))}
             onUndo={handleUndo}
