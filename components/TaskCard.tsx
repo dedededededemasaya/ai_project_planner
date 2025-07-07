@@ -1,4 +1,3 @@
-
 import React, { memo, useState, useRef, useEffect } from 'react';
 import { ProjectTask, NumericalTargetStatus, TaskStatus } from '../types';
 import { InfoIcon, TrashIcon, GaugeIcon, ClockIcon, CircleIcon, PlayCircleIcon, CheckCircleIcon as CompletedIcon, XCircleIcon } from './icons';
@@ -13,6 +12,7 @@ interface TaskCardProps {
   cardRef?: React.RefObject<HTMLDivElement>;
   onStartConnection: (taskId: string, event: React.MouseEvent<HTMLDivElement>) => void;
   onEndConnection: (taskId: string) => void;
+  userRole?: 'owner' | 'editor' | 'viewer' | null;
 }
 
 const getStatusStyles = (status?: TaskStatus): { icon: JSX.Element, color: string, text: string, bgColor: string } => {
@@ -29,7 +29,6 @@ const getStatusStyles = (status?: TaskStatus): { icon: JSX.Element, color: strin
   }
 };
 
-
 const TaskCard: React.FC<TaskCardProps> = ({ 
   task, 
   onSelectTask, 
@@ -40,6 +39,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
   cardRef,
   onStartConnection,
   onEndConnection,
+  userRole,
 }) => {
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
   const statusRef = useRef<HTMLDivElement>(null);
@@ -57,8 +57,20 @@ const TaskCard: React.FC<TaskCardProps> = ({
   }, [statusRef]);
 
   const handleStatusChange = (newStatus: TaskStatus) => {
+    if (userRole === 'viewer') {
+      alert('閲覧権限のみのため、ステータスを変更できません。');
+      return;
+    }
     onUpdateStatus(task.id, newStatus);
     setIsStatusDropdownOpen(false);
+  };
+
+  const handleRemoveClick = () => {
+    if (userRole === 'viewer') {
+      alert('閲覧権限のみのため、タスクを削除できません。');
+      return;
+    }
+    onRemoveTask(task.id);
   };
   
   const numericalTarget = task.extendedDetails?.numericalTarget;
@@ -78,6 +90,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
   const highlightClass = isInProgress ? "border-4 border-blue-500 ring-2 ring-blue-500 ring-offset-1" : "border border-transparent";
 
   const handleMouseDownOnConnector = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (userRole === 'viewer') return;
     event.stopPropagation();
     onStartConnection(task.id, event);
   };
@@ -89,7 +102,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
       draggable="true"
       onDragStart={(e) => onDragCardStart(e, task.id)}
       onMouseUp={() => onEndConnection(task.id)}
-      className={`${cardBaseClasses} ${highlightClass}`}
+      className={`${cardBaseClasses} ${highlightClass} ${userRole === 'viewer' ? 'opacity-90' : ''}`}
       style={{ 
         position: 'absolute', 
         left: task.position?.x || 0, 
@@ -98,11 +111,13 @@ const TaskCard: React.FC<TaskCardProps> = ({
       }}
     >
       <div className="p-5 relative">
-        <div 
-            onMouseDown={handleMouseDownOnConnector}
-            className="absolute right-[-6px] top-1/2 -translate-y-1/2 w-4 h-4 bg-blue-500 border-2 border-white rounded-full cursor-crosshair hover:scale-125 transition-transform z-10"
-            title="ドラッグして接続"
-        />
+        {userRole !== 'viewer' && (
+          <div 
+              onMouseDown={handleMouseDownOnConnector}
+              className="absolute right-[-6px] top-1/2 -translate-y-1/2 w-4 h-4 bg-blue-500 border-2 border-white rounded-full cursor-crosshair hover:scale-125 transition-transform z-10"
+              title="ドラッグして接続"
+          />
+        )}
         <div className="flex items-start justify-between mb-2">
           <div className="flex items-center flex-grow min-w-0 mr-2">
             <span className={`bg-blue-600 text-white rounded-full w-7 h-7 flex items-center justify-center font-bold text-xs mr-3 flex-shrink-0`}>{index + 1}</span>
@@ -130,17 +145,19 @@ const TaskCard: React.FC<TaskCardProps> = ({
             >
               <InfoIcon className="w-5 h-5" />
             </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemoveTask(task.id);
-              }}
-              className="text-red-500 hover:text-red-700 transition-colors p-1 rounded-full hover:bg-red-100"
-              title="タスクを削除"
-              aria-label={`タスクを削除: ${task.title}`}
-            >
-              <TrashIcon className="w-5 h-5" />
-            </button>
+            {userRole !== 'viewer' && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleRemoveClick();
+                }}
+                className="text-red-500 hover:text-red-700 transition-colors p-1 rounded-full hover:bg-red-100"
+                title="タスクを削除"
+                aria-label={`タスクを削除: ${task.title}`}
+              >
+                <TrashIcon className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -153,14 +170,14 @@ const TaskCard: React.FC<TaskCardProps> = ({
         <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
             <div className="relative" ref={statusRef}>
               <button
-                onClick={() => setIsStatusDropdownOpen(prev => !prev)}
-                className={`inline-flex items-center px-2 py-0.5 rounded-full cursor-pointer ${statusInfo.bgColor} ${statusInfo.color} hover:ring-2 hover:ring-offset-1 hover:ring-blue-400 transition-all`}
-                title="ステータスを変更"
+                onClick={() => userRole !== 'viewer' && setIsStatusDropdownOpen(prev => !prev)}
+                className={`inline-flex items-center px-2 py-0.5 rounded-full ${userRole === 'viewer' ? 'cursor-default' : 'cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-blue-400'} ${statusInfo.bgColor} ${statusInfo.color} transition-all`}
+                title={userRole === 'viewer' ? 'ステータス（閲覧のみ）' : 'ステータスを変更'}
               >
                 {React.cloneElement(statusInfo.icon, { className: `w-3 h-3 mr-1 ${statusInfo.color}` })}
                 {statusInfo.text}
               </button>
-              {isStatusDropdownOpen && (
+              {isStatusDropdownOpen && userRole !== 'viewer' && (
                 <div className="absolute bottom-full mb-1 w-36 bg-white border border-slate-200 rounded-md shadow-lg z-20 py-1">
                   {Object.values(TaskStatus).map(s => (
                     <button

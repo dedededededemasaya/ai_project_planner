@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, createRef, useCallback } from 'react';
 import { ProjectTask, EditableExtendedTaskDetails, ProjectHealthReport, SlideDeck, TaskStatus, GanttItem } from '../types';
 import TaskCard from './TaskCard';
-import { TargetIcon, CalendarIcon, DownloadIcon, PlusCircleIcon, UploadIcon, RefreshIcon, UndoIcon, RedoIcon, ClipboardDocumentListIcon, SparklesIcon, PresentationChartBarIcon, PlusIcon as NewProjectIcon, GanttChartIcon, FolderIcon, KeyIcon } from './icons';
+import { TargetIcon, CalendarIcon, DownloadIcon, PlusCircleIcon, UploadIcon, RefreshIcon, UndoIcon, RedoIcon, ClipboardDocumentListIcon, SparklesIcon, PresentationChartBarIcon, PlusIcon as NewProjectIcon, GanttChartIcon, FolderIcon, KeyIcon, ResponsibleIcon } from './icons';
 import FlowConnector from './FlowConnector';
 import ActionItemOverviewModal from './ActionItemOverviewModal';
 import ProjectHealthReportModal from './ProjectHealthReportModal';
@@ -41,6 +41,9 @@ interface ProjectFlowDisplayProps {
   onLogout: () => void;
   currentProjectId: string | null;
   onSaveProject: () => Promise<void>;
+  userRole: 'owner' | 'editor' | 'viewer' | null;
+  onOpenMembers: () => void;
+  lastModifiedBy?: string | null;
 }
 
 interface ConnectorInfo {
@@ -57,7 +60,7 @@ const ProjectFlowDisplay: React.FC<ProjectFlowDisplayProps> = ({
   onAutoLayout, onUndo, canUndo, onRedo, canRedo,
   generateUniqueId, onUpdateTaskConnections,
   ganttData, setGanttData, onCustomReportGenerated, onClearApiKey,
-  onOpenProjectList, onLogout, currentProjectId, onSaveProject
+  onOpenProjectList, onLogout, currentProjectId, onSaveProject, userRole, onOpenMembers, lastModifiedBy
 }) => {
   const singleTaskFileInputRef = useRef<HTMLInputElement>(null);
   const flowContainerRef = useRef<HTMLDivElement>(null);
@@ -274,37 +277,9 @@ const ProjectFlowDisplay: React.FC<ProjectFlowDisplayProps> = ({
     }
   };
 
-  const handleSaveProject = async () => {
-    if (!currentProjectId) {
-      // 新規プロジェクトの場合、保存ダイアログを表示
-      const title = prompt('プロジェクト名を入力してください:', `${projectGoal.substring(0, 50)}...`);
-      if (!title) return;
-
-      setIsSaving(true);
-      try {
-        const project = await ProjectService.createProject(title, projectGoal, targetDate, tasks, ganttData);
-        alert('プロジェクトが保存されました！');
-        // currentProjectIdを更新する必要があるが、propsで渡されているので親コンポーネントで管理
-      } catch (error) {
-        alert('プロジェクトの保存に失敗しました: ' + (error instanceof Error ? error.message : '不明なエラー'));
-      } finally {
-        setIsSaving(false);
-      }
-    } else {
-      // 既存プロジェクトの場合、直接保存
-      setIsSaving(true);
-      try {
-        await onSaveProject();
-        alert('プロジェクトが保存されました！');
-      } catch (error) {
-        alert('プロジェクトの保存に失敗しました: ' + (error instanceof Error ? error.message : '不明なエラー'));
-      } finally {
-        setIsSaving(false);
-      }
-    }
-  };
-
   const handleStartConnection = (taskId: string, event: React.MouseEvent<HTMLDivElement>) => {
+      if (userRole === 'viewer') return;
+      
       if (!flowContainerRef.current) return;
       const containerRect = flowContainerRef.current.getBoundingClientRect();
       const fromPos = {
@@ -315,6 +290,8 @@ const ProjectFlowDisplay: React.FC<ProjectFlowDisplayProps> = ({
   };
 
   const handleEndConnection = (targetTaskId: string) => {
+      if (userRole === 'viewer') return;
+      
       if (!connectingState || connectingState.fromId === targetTaskId) {
           setConnectingState(null);
           return;
@@ -328,6 +305,8 @@ const ProjectFlowDisplay: React.FC<ProjectFlowDisplayProps> = ({
   };
 
   const handleDeleteConnection = (sourceTaskId: string, targetTaskId: string) => {
+      if (userRole === 'viewer') return;
+      
       const sourceTask = tasks.find(t => t.id === sourceTaskId);
       if (sourceTask) {
           const newNextTaskIds = (sourceTask.nextTaskIds || []).filter(id => id !== targetTaskId);
@@ -366,6 +345,36 @@ const ProjectFlowDisplay: React.FC<ProjectFlowDisplayProps> = ({
       setIsDocumentCenterOpen(false);
   }
 
+  const handleSaveProject = async () => {
+    if (!currentProjectId) {
+      // 新規プロジェクトの場合、保存ダイアログを表示
+      const title = prompt('プロジェクト名を入力してください:', `${projectGoal.substring(0, 50)}...`);
+      if (!title) return;
+
+      setIsSaving(true);
+      try {
+        const project = await ProjectService.createProject(title, projectGoal, targetDate, tasks, ganttData);
+        alert('プロジェクトが保存されました！');
+        // currentProjectIdを更新する必要があるが、propsで渡されているので親コンポーネントで管理
+      } catch (error) {
+        alert('プロジェクトの保存に失敗しました: ' + (error instanceof Error ? error.message : '不明なエラー'));
+      } finally {
+        setIsSaving(false);
+      }
+    } else {
+      // 既存プロジェクトの場合、直接保存
+      setIsSaving(true);
+      try {
+        await onSaveProject();
+        alert('プロジェクトが保存されました！');
+      } catch (error) {
+        alert('プロジェクトの保存に失敗しました: ' + (error instanceof Error ? error.message : '不明なエラー'));
+      } finally {
+        setIsSaving(false);
+      }
+    }
+  };
+
   const formattedDate = targetDate ? new Date(targetDate + 'T00:00:00Z').toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' }) : '未設定';
 
   if (isProjectReportEditorOpen && projectReportDeck) {
@@ -401,20 +410,31 @@ const ProjectFlowDisplay: React.FC<ProjectFlowDisplayProps> = ({
             >
               <FolderIcon className="w-5 h-5" />
             </button>
+            {userRole && userRole !== 'viewer' && (
+              <button
+                onClick={handleSaveProject}
+                disabled={isSaving}
+                className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 disabled:bg-slate-400"
+                title="プロジェクトを保存"
+              >
+                {isSaving ? <LoadingSpinner size="sm" color="border-white" /> : <DownloadIcon className="w-5 h-5" />}
+              </button>
+            )}
+            {currentProjectId && userRole === 'owner' && (
+              <button
+                onClick={onOpenMembers}
+                className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-slate-800 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-400"
+                title="メンバー管理"
+              >
+                <ResponsibleIcon className="w-5 h-5" />
+              </button>
+            )}
             <button
-              onClick={handleSaveProject}
-              disabled={isSaving}
-              className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 disabled:bg-slate-400"
-              title="プロジェクトを保存"
-            >
-              {isSaving ? <LoadingSpinner size="sm" color="border-white" /> : <DownloadIcon className="w-5 h-5" />}
-            </button>
-            <button
-              onClick={onUndo} disabled={!canUndo}
+              onClick={onUndo} disabled={!canUndo || userRole === 'viewer'}
               className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-slate-800 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-400 disabled:bg-slate-300 disabled:cursor-not-allowed" title="元に戻す"
             ><UndoIcon className="w-5 h-5" /></button>
              <button
-              onClick={onRedo} disabled={!canRedo}
+              onClick={onRedo} disabled={!canRedo || userRole === 'viewer'}
               className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-slate-800 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-400 disabled:bg-slate-300 disabled:cursor-not-allowed" title="やり直し"
             ><RedoIcon className="w-5 h-5" /></button>
             <button
@@ -430,18 +450,22 @@ const ProjectFlowDisplay: React.FC<ProjectFlowDisplayProps> = ({
             >
               <KeyIcon className="w-5 h-5" />
             </button>
-            <button
-              onClick={onAddTask}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700"
-            ><PlusCircleIcon className="w-5 h-5 mr-2" />タスク追加</button>
+            {userRole !== 'viewer' && (
+              <button
+                onClick={onAddTask}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700"
+              ><PlusCircleIcon className="w-5 h-5 mr-2" />タスク追加</button>
+            )}
             <button
               onClick={onExportProject}
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
             ><DownloadIcon className="w-5 h-5 mr-2" />JSONエクスポート</button>
-            <button
-              onClick={onAutoLayout}
-              className="inline-flex items-center px-4 py-2 border border-slate-300 text-sm font-medium rounded-md shadow-sm text-slate-700 bg-white hover:bg-slate-50" title="自動整列"
-            ><RefreshIcon className="w-5 h-5 mr-2" />整列</button>
+            {userRole !== 'viewer' && (
+              <button
+                onClick={onAutoLayout}
+                className="inline-flex items-center px-4 py-2 border border-slate-300 text-sm font-medium rounded-md shadow-sm text-slate-700 bg-white hover:bg-slate-50" title="自動整列"
+              ><RefreshIcon className="w-5 h-5 mr-2" />整列</button>
+            )}
           </div>
         </div>
 
@@ -452,7 +476,23 @@ const ProjectFlowDisplay: React.FC<ProjectFlowDisplayProps> = ({
                 <div className="space-y-2 text-slate-700">
                   <p className="flex items-start"><TargetIcon className="w-5 h-5 mr-2 text-blue-600 flex-shrink-0 mt-1" /><strong>目的:</strong>&nbsp;<span className="break-all">{projectGoal}</span></p>
                   <p className="flex items-center"><CalendarIcon className="w-5 h-5 mr-2 text-blue-600 flex-shrink-0" /><strong>目標日:</strong>&nbsp;{formattedDate}</p>
-                  {currentProjectId && <p className="text-sm text-green-600">✓ Supabaseに保存済み</p>}
+                  {currentProjectId && (
+                    <div className="flex items-center gap-4">
+                      <p className="text-sm text-green-600">✓ Supabaseに保存済み</p>
+                      {userRole && (
+                        <span className={`px-2 py-1 text-xs rounded-full ${
+                          userRole === 'owner' ? 'bg-purple-100 text-purple-800' :
+                          userRole === 'editor' ? 'bg-blue-100 text-blue-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {userRole === 'owner' ? 'オーナー' : userRole === 'editor' ? '編集者' : '閲覧者'}
+                        </span>
+                      )}
+                      {lastModifiedBy && (
+                        <p className="text-xs text-slate-500">最終更新: 他のユーザー</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex flex-col sm:flex-row gap-2 flex-shrink-0">
@@ -523,10 +563,17 @@ const ProjectFlowDisplay: React.FC<ProjectFlowDisplayProps> = ({
                 onStartConnection={handleStartConnection}
                 onEndConnection={handleEndConnection}
                 index={index}
+                userRole={userRole}
               />
             ))}
             {connectors.map(conn => (
-              <FlowConnector key={conn.id} from={conn.from} to={conn.to} id={conn.id} onDelete={() => handleDeleteConnection(conn.sourceId, conn.targetId)}/>
+              <FlowConnector 
+                key={conn.id} 
+                from={conn.from} 
+                to={conn.to} 
+                id={conn.id} 
+                onDelete={userRole !== 'viewer' ? () => handleDeleteConnection(conn.sourceId, conn.targetId) : undefined}
+              />
             ))}
             {connectingState && (
                 <FlowConnector from={connectingState.fromPos} to={mousePos} id="preview-connector" />
