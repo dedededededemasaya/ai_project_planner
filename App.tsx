@@ -538,10 +538,6 @@ const App: React.FC = () => {
             onExportProject={handleExportProject}
             onAddTask={() => setIsAddTaskModalOpen(true)}
             onRemoveTask={handleRemoveTask}
-        )
-    }
-  }
-}
             onUpdateTaskStatus={handleUpdateTaskStatus}
             onImportSingleTask={() => {}} // Placeholder for now
             onAutoLayout={() => setTasksWithHistory(prev => autoLayoutTasks([...prev]))}
